@@ -32,10 +32,11 @@ public class StadtradelnView {
             }
         };
 
-        // Tabelle erstellen
+        // Tabelle erstellen für Anzeige der Gruppen mit Gefahrenen Kilometer
         table = new JTable(tableModel);
         JScrollPane tableScroll = new JScrollPane(table);
 
+        // Textfeld für Statusmeldungen in der GUI
         feedbackArea = new JTextArea(10, 50);
         feedbackArea.setEditable(false);
         JScrollPane feedbackScroll = new JScrollPane(feedbackArea);
@@ -51,33 +52,34 @@ public class StadtradelnView {
         addRideButton.addActionListener(e -> controller.addFahrtDialog());
         exitButton.addActionListener(e -> System.exit(0));
 
+        // Panel mit Steuerelementen in der GUI
         JPanel buttonPanel = new JPanel();
         buttonPanel.add(addGroupButton);
         buttonPanel.add(addDriverButton);
         buttonPanel.add(addRideButton);
         buttonPanel.add(exitButton);
 
+        // Positionierung der Elemente
         frame.add(tableScroll, BorderLayout.CENTER);
         frame.add(feedbackScroll, BorderLayout.SOUTH);
         frame.add(buttonPanel, BorderLayout.NORTH);
-
         frame.setVisible(true);
     }
 
+    // Tabelle wird geleert mit setRowCount und dann die GUI mit den neuesten Daten aktualisiert
     public void updateTable(Map<String, Integer> data) {
-        System.out.println("Tabelle wird aktualisiert...");
-        System.out.println("Aktuelle Daten: " + data); // Debug-Ausgabe
         tableModel.setRowCount(0);
         for (Map.Entry<String, Integer> entry : data.entrySet()) {
             tableModel.addRow(new Object[]{entry.getKey(), entry.getValue()});
         }
     }
 
-
+    // Die Meldung wird hinzugefügt und ein Zeilenumbruch gemacht
     public void addFeedbackMessage(String message) {
         feedbackArea.append(message + "\n");
     }
 
+    // Setzt eine Referenz zum Controller, damit die View Methoden des Controller aufrufen kann
     public void setController(StadtradelnController controller) {
         this.controller = controller;
     }
@@ -85,5 +87,7 @@ public class StadtradelnView {
     // Neue Methode: Zugriff auf die JTable ermöglichen
     public JTable getTabelle() {
         return table;
+
+
     }
 }

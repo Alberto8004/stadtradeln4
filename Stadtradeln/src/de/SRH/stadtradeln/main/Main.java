@@ -8,24 +8,21 @@ import de.SRH.stadtradeln.view.StadtradelnView;
 
 public class Main {
     public static void main(String[] args) {
-        // Initialisierung der Komponenten
+        // Initialisierung der benötigten Objekte für Klassenübergreifende Interaktion
         DateiManager dateiManager = new DateiManager();
         StadtradelnModel model = new StadtradelnModel(dateiManager);
-        model.debugGruppenMitglieder(); // Ausgabe aller Gruppen und Mitglieder
         StadtradelnView view = new StadtradelnView();
         StadtradelnController controller = new StadtradelnController(model, view);
 
-        // Setze den Controller für die View
+        // Verbindung zwischen View und Controller
         view.setController(controller);
 
-        // Starte den Verarbeitungsthread für neue Fahrten
+        // Startet den Verarbeitungsthread für neue Fahrten
         VerarbeitungThread verarbeitungThread = new VerarbeitungThread(model, dateiManager, view);
         verarbeitungThread.start();
         System.out.println("VerarbeitungThread wurde gestartet.");
 
         // Sicherstellen, dass Daten beim Beenden gespeichert werden
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            model.speichereDaten();
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(model::speichereDaten));
     }
 }

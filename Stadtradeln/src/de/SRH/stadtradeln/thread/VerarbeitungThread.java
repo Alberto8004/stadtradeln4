@@ -1,4 +1,3 @@
-// VerarbeitungThread.java
 package de.SRH.stadtradeln.thread;
 
 import de.SRH.stadtradeln.model.DateiManager;
@@ -7,122 +6,87 @@ import de.SRH.stadtradeln.view.StadtradelnView;
 
 import java.io.*;
 import java.nio.file.*;
-import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
+// Erbt von Thread und wird parallel zur Hauptanwendung durchgeführt
 public class VerarbeitungThread extends Thread {
-
-    private static final Path NEUE_FAHRTEN_DATEI = Paths.get("C:/Users/startklar/IdeaProjects/Stadtradeln/neuefahrten.csv");
+    private static final Logger LOGGER = Logger.getLogger(VerarbeitungThread.class.getName());
+    private static final String DATEI_PFAD = "neuefahrten.csv";
     private final StadtradelnModel model;
-    private final DateiManager dateiManager;
     private final StadtradelnView view;
+    private final DateiManager dateiManager;
+    private boolean running = true; // Läuft bis explizit beendet
 
+    // Initialisiert das Modell, die View und den DateiManager
     public VerarbeitungThread(StadtradelnModel model, DateiManager dateiManager, StadtradelnView view) {
         this.model = model;
-        this.dateiManager = dateiManager;
         this.view = view;
+        this.dateiManager = dateiManager;
     }
 
+    // Ein separater Thread, der jede Minute prüft, ob "neuefahrten.csv" existiert und diese verarbeitet.
     @Override
     public void run() {
-        startSchedule();
-    }
-
-    private void startSchedule() {
-        while (true) {
+        while (running) {  // Läuft in einer Endlosschleife, solange running == true
             try {
-                Thread.sleep(60000); // Alle 60 Sekunden prüfen
-                verarbeiteNeueFahrten();
+                if (dateiManager.dateiExistiert(DATEI_PFAD)) {
+                    verarbeiteNeueFahrten(); // Falls Datei existiert, wird diese Methode aufgerufen
+                }
+                Thread.sleep(60000); // 1 Minute warten bis zur nächten Überprüfung
             } catch (InterruptedException e) {
-                System.out.println("Verarbeitungsthread unterbrochen: " + e.getMessage());
-                Thread.currentThread().interrupt();
-                break;
+                LOGGER.log(Level.WARNING, "Thread wurde unterbrochen.", e);
+                running = false;
             }
         }
     }
 
+    // Methode zum sicheren Beenden des Threads
+    public void stopThread() {
+        running = false;
+        this.interrupt();
+    }
+
+    // Verarbeitet die Datei "neuefahrten.csv"
     private void verarbeiteNeueFahrten() {
-        System.out.println("Pfad zur Datei: " + NEUE_FAHRTEN_DATEI.toAbsolutePath());
-        System.out.println("Existiert Datei? " + NEUE_FAHRTEN_DATEI.toFile().exists());
+        List<String[]> neueFahrten = dateiManager.ladeNeueFahrten(DATEI_PFAD);
+        List<String> fehlerhafteZeilen = new ArrayList<>();
 
-        File datei = NEUE_FAHRTEN_DATEI.toFile();
-        if (!datei.exists()) {
-            System.out.println("Keine neue Fahrten-Datei gefunden.");
-            return;
+        for (String[] teile : neueFahrten) {
+            if (teile.length != 2) {
+                fehlerhafteZeilen.add(String.join(",", teile));
+                continue;
+            }
+
+            String nickname = teile[0].trim();
+            int kilometer;
+
+            try {
+                kilometer = Integer.parseInt(teile[1].trim());
+                if (kilometer < 0) {
+                    throw new IllegalArgumentException("Kilometeranzahl darf nicht negativ sein.");
+                }
+                model.addFahrt(nickname, kilometer);
+            } catch (IllegalArgumentException e) {
+                fehlerhafteZeilen.add(String.join(",", teile));
+                LOGGER.log(Level.WARNING, "Ungültige Datenzeile: " + String.join(",", teile));
+            }
         }
 
-
-        try {
-            List<String[]> neueFahrten = readAndProcessFile(NEUE_FAHRTEN_DATEI);
-            if (!neueFahrten.isEmpty()) {
-                neueFahrten.forEach(daten -> {
-                    try {
-                        String nickname = daten[0];
-                        LocalDate datum = LocalDate.parse(daten[1]);
-                        int kilometer = Integer.parseInt(daten[2]);
-
-                        // Daten in das Model integrieren
-                        model.addFahrt(nickname, kilometer);
-                        dateiManager.speichereFahrt(nickname, kilometer, datum);
-                        System.out.println("Fahrt hinzugefügt: " + nickname + ", " + kilometer + " km, " + datum);
-                    } catch (Exception e) {
-                        System.err.println("Fehler bei der Verarbeitung der Fahrt: " + String.join(",", daten));
-                        e.printStackTrace();
-                    }
-                });
-
-                view.updateTable(model.getGruppenKilometer()); // GUI aktualisieren
-                deleteIfExists(NEUE_FAHRTEN_DATEI);
-                System.out.println("Datei 'neuefahrten.csv' erfolgreich verarbeitet und gelöscht.");
+        // Datei löschen, falls keine fehlerhaften Daten
+        if (fehlerhafteZeilen.isEmpty()) {
+            if (dateiManager.loescheDatei(DATEI_PFAD)) {
+                view.addFeedbackMessage("Datei 'neuefahrten.csv' erfolgreich verarbeitet und gelöscht.");
             } else {
-                System.out.println("Keine gültigen Daten zum Verarbeiten gefunden.");
+                view.addFeedbackMessage("Fehler beim Löschen der Datei.");
             }
-        } catch (IOException e) {
-            System.err.println("Fehler beim Verarbeiten der Datei 'neuefahrten.csv': " + e.getMessage());
+        } else {
+            view.addFeedbackMessage("Fehlerhafte Zeilen gefunden. Datei bleibt erhalten.");
         }
-    }
 
-    private List<String[]> readAndProcessFile(Path filePath) throws IOException {
-        System.out.println("Datei-Inhalt wird gelesen...");
-        List<String[]> neueFahrten = new ArrayList<>();
-        try (BufferedReader reader = new BufferedReader(new FileReader(filePath.toFile()))) {
-            String line;
-            boolean isFirstLine = true; // Kopfzeile überspringen
-            while ((line = reader.readLine()) != null) {
-                System.out.println("Gelesene Zeile: " + line); // Debug-Ausgabe
-                if (isFirstLine) {
-                    isFirstLine = false;
-                    continue;
-                }
-
-                String[] daten = line.split(",");
-                if (isValidFormat(daten)) {
-                    neueFahrten.add(daten);
-                } else {
-                    System.out.println("Ungültige Zeile übersprungen: " + line);
-                }
-            }
-        }
-        return neueFahrten;
-    }
-
-
-    private boolean isValidFormat(String[] daten) {
-        System.out.println("Zeile wird validiert: " + Arrays.toString(daten)); // Debug-Ausgabe
-        return daten.length == 3 &&
-                !daten[0].trim().isEmpty() && // Nickname darf nicht leer sein
-                daten[1].trim().matches("\\d{4}-\\d{2}-\\d{2}") && // Datum im Format YYYY-MM-DD
-                daten[2].trim().matches("\\d+"); // Kilometer muss eine positive Zahl sein
-    }
-
-
-    private void deleteIfExists(Path filePath) {
-        try {
-            Files.deleteIfExists(filePath);
-        } catch (IOException e) {
-            System.err.println("Fehler beim Löschen der Datei " + filePath + ": " + e.getMessage());
-        }
+        // GUI aktualisieren und Daten speichern
+        view.updateTable(model.getGruppenKilometer());
+        model.speichereDaten();
     }
 }
